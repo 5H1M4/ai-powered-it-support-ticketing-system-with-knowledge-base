@@ -10,7 +10,7 @@ export interface Ticket {
   id: string;
   subject: string;
   description: string;
-  status: 'open' | 'closed' | 'awaiting_info' | 'in_progress';
+  status: 'open' | 'closed' | 'awaiting_info' | 'in_progress' | 'resolved';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   createdAt: string;
   updatedAt: string;
@@ -61,4 +61,5 @@ export interface TicketStats {
   aiResponses: number;
   avgResponseTime: string;
   satisfactionRate: number;
+  resolutionRate: number;
 }

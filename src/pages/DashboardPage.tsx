@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bot, RefreshCw, Plus, Home, BarChart3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Ticket, TicketStats } from '../types';
-import { fetchTickets, getTicketStats } from '../utils/api';
+import { fetchTickets, getTicketStats, updateTicketStatus } from '../utils/api';
 import TicketListComponent from '../components/TicketList';
 import TicketDetail from '../components/TicketDetail';
 import DashboardStatsComponent from '../components/DashboardStats';
@@ -53,8 +53,19 @@ export default function DashboardPage() {
     }
   }
 
-  const handleTicketSelect = (ticket: Ticket) => setSelectedTicket(ticket);
-  const handleBackToList = () => setSelectedTicket(null);
+  const handleTicketSelect = (ticket: Ticket) => {
+    if (ticket.status === 'open') {
+      updateTicketStatus(ticket.id, 'in_progress').then(() => {
+        setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: 'in_progress' } : t));
+        setSelectedTicket({ ...ticket, status: 'in_progress' });
+      });
+    } else {
+      setSelectedTicket(ticket);
+    }
+  };
+  const handleBackToList = () => {
+    setSelectedTicket(null);
+  };
   const handleTicketUpdate = (upd: Ticket) => {
     setTickets(prev => prev.map(t => (t.id === upd.id ? upd : t)));
     setSelectedTicket(upd);
@@ -145,7 +156,12 @@ export default function DashboardPage() {
                   <h2 className="text-2xl font-bold text-white">Recent Tickets</h2>
                   <span className="text-sm text-gray-400">{tickets.length} total tickets</span>
                 </div>
-                <TicketList tickets={tickets} onTicketSelect={handleTicketSelect} loading={refreshing} />
+                <TicketList
+                  tickets={tickets}
+                  onTicketSelect={handleTicketSelect}
+                  loading={refreshing}
+                  // onMarkInProgress={handleMarkInProgress} // not needed, handled in handleBackToList
+                />
               </section>
             )}
           </>

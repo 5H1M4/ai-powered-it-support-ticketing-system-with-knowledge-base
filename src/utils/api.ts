@@ -10,25 +10,77 @@
 import { supabase } from './supabaseClient';
 import { Ticket, TicketStats } from '../types';
 
+function mapTicket(raw: any): Ticket {
+  return {
+    id: raw.id,
+    subject: raw.subject,
+    description: raw.description,
+    status: raw.status,
+    priority: raw.priority,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+    fileUrl: raw.file_url,
+    fileName: raw.file_name,
+    aiResponse: raw.ai_response,
+    aiResponseGeneratedAt: raw.ai_response_generated_at,
+    feedback: raw.feedback,
+    emailNotificationSent: raw.email_notification_sent,
+    emailNotificationStatus: raw.email_notification_status,
+  };
+}
+
 export async function fetchTickets(): Promise<Ticket[]> {
   const { data, error } = await supabase
     .from('tickets')
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return (data || []).map(mapTicket);
+}
+
+export async function deleteTicket(ticketId: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  const { error } = await supabase
+    .from('tickets')
+    .delete()
+    .eq('id', ticketId);
+  if (error) {
+    return { success: false, error: 'Failed to delete ticket' };
+  }
+  return { success: true, message: 'Ticket deleted successfully' };
 }
 
 export async function getTicketStats(): Promise<TicketStats> {
   const tickets = await fetchTickets();
+  const total = tickets.length;
+  const open = tickets.filter(t => t.status === 'open').length;
+  const inProgress = tickets.filter(t => t.status === 'in_progress').length;
+  const resolved = tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length;
+  const closed = tickets.filter(t => t.status === 'closed').length;
+  const aiResponses = tickets.filter(t => t.aiResponse && t.aiResponse.length > 0).length;
+  // Average response time (in minutes)
+  const responseTimes = tickets
+    .filter(t => t.aiResponseGeneratedAt && t.createdAt)
+    .map(t => (new Date(t.aiResponseGeneratedAt!).getTime() - new Date(t.createdAt).getTime()) / 60000)
+    .filter(ms => ms > 0);
+  const avgResponseTime = responseTimes.length
+    ? `${Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)} min`
+    : 'N/A';
+  // Satisfaction rate (average feedback.rating)
+  const feedbacks = tickets.map(t => t.feedback?.rating).filter(r => typeof r === 'number') as number[];
+  const satisfactionRate = feedbacks.length
+    ? Math.round((feedbacks.reduce((a, b) => a + b, 0) / feedbacks.length) * 10) / 10
+    : 0;
+  // Resolution rate
+  const resolutionRate = total ? Math.round((resolved / total) * 100) : 0;
   return {
-    total: tickets.length,
-    open: tickets.filter(t => t.status === 'open').length,
-    closed: tickets.filter(t => t.status === 'closed').length,
-    inProgress: tickets.filter(t => t.status === 'in_progress').length,
-    aiResponses: tickets.filter(t => t.aiResponse).length,
-    avgResponseTime: '< 2 min', // Placeholder, real calculation can be added
-    satisfactionRate: 4.2 // Placeholder, real calculation can be added
+    total,
+    open,
+    inProgress,
+    closed,
+    aiResponses,
+    avgResponseTime,
+    satisfactionRate,
+    resolutionRate
   };
 }
 
@@ -68,7 +120,7 @@ export async function getTicketById(ticketId: string): Promise<Ticket | null> {
   if (error) {
     return null;
   }
-  return data;
+  return mapTicket(data);
 }
 
 /**

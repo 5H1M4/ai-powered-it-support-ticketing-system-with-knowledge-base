@@ -15,9 +15,6 @@ import {
   CheckCircle, 
   AlertCircle, 
   PlayCircle, 
-  Mail, 
-  MailX, 
-  Loader2,
   Filter,
   Calendar,
   Flag,
@@ -26,13 +23,14 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Ticket, TicketFilters } from '../types';
-import { fetchTickets } from '../utils/api';
+import { fetchTickets, getTicketById, updateTicketStatus } from '../utils/api';
 import Spinner from './Spinner';
 
 interface TicketListProps {
   tickets?: Ticket[];            // optional prop override
   loading?: boolean;             // optional loading flag
   onTicketSelect?: (ticket: Ticket) => void;
+  onMarkInProgress?: (ticketId: string) => void; // new prop
 }
 
 export default function TicketList({ tickets: propTickets, loading: propLoading, onTicketSelect }: TicketListProps) {
@@ -41,6 +39,29 @@ export default function TicketList({ tickets: propTickets, loading: propLoading,
   const [error, setError] = useState<string | null>(null);
   const [filters] = useState<TicketFilters>({});
   const [searchTerm] = useState<string>('');
+
+  // AI response state for each ticket
+  const [, setAiResponses] = useState<Record<string, { loading: boolean; aiResponse?: string }>>({});
+
+  // Helper to render date, fallback to fetch if invalid
+  const [dateFixes, setDateFixes] = useState<Record<string, string>>({});
+  const renderDate = (ticket: Ticket) => {
+    const d = new Date(ticket.createdAt);
+    if (isNaN(d.getTime())) {
+      // If we already fixed, use it
+      if (dateFixes[ticket.id]) {
+        return <time dateTime={dateFixes[ticket.id]}>{new Date(dateFixes[ticket.id]).toLocaleString()}</time>;
+      }
+      // Otherwise, fetch and update
+      getTicketById(ticket.id).then(fresh => {
+        if (fresh?.createdAt && !dateFixes[ticket.id]) {
+          setDateFixes(prev => ({ ...prev, [ticket.id]: fresh.createdAt }));
+        }
+      });
+      return <span className="text-red-400">Invalid Date</span>;
+    }
+    return <time dateTime={ticket.createdAt}>{d.toLocaleString()}</time>;
+  };
 
   // Fetch live tickets if no tickets passed in via props
   useEffect(() => {
@@ -67,6 +88,48 @@ export default function TicketList({ tickets: propTickets, loading: propLoading,
     return () => { mounted = false; };
   }, []);
 
+  // Fetch AI responses for all tickets
+  useEffect(() => {
+    if (!tickets.length) return;
+    let cancelled = false;
+    const fetchAllAI = async () => {
+      await Promise.all(
+        tickets.map(async (ticket) => {
+          setAiResponses(prev => ({ ...prev, [ticket.id]: { loading: true } }));
+          try {
+            const fresh = await getTicketById(ticket.id);
+            if (!cancelled && fresh) {
+              setAiResponses(prev => ({ ...prev, [ticket.id]: { loading: false, aiResponse: fresh.aiResponse } }));
+              // Update ticket status and emailNotificationStatus in local state
+              setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: fresh.status, emailNotificationStatus: fresh.emailNotificationStatus } : t));
+            }
+          } catch {
+            if (!cancelled) {
+              setAiResponses(prev => ({ ...prev, [ticket.id]: { loading: false } }));
+            }
+          }
+        })
+      );
+    };
+    fetchAllAI();
+    return () => { cancelled = true; };
+  }, [tickets]);
+
+  // Handler for row click: update status if open, then select
+  const handleRowClick = async (ticket: Ticket) => {
+    if (ticket.status === 'open') {
+      // Optimistically update status to in_progress
+      setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: 'in_progress' } : t));
+      await updateTicketStatus(ticket.id, 'in_progress');
+      // Optionally re-fetch just this ticket for accuracy
+      const updated = await getTicketById(ticket.id);
+      if (updated) {
+        setTickets(prev => prev.map(t => t.id === ticket.id ? updated : t));
+      }
+    }
+    if (onTicketSelect) onTicketSelect(ticket);
+  };
+
   // Derived filtered tickets
   const filteredTickets = useMemo(() => {
     let list = tickets;
@@ -86,14 +149,15 @@ export default function TicketList({ tickets: propTickets, loading: propLoading,
   }, [tickets, filters, searchTerm]);
 
   const getStatusConfig = (status: Ticket['status']) => {
-  switch (status) {
-    case 'open': return { icon: Clock, className: 'text-blue-400 bg-blue-900/50', label: 'Open' };
-    case 'in_progress': return { icon: PlayCircle, className: 'text-amber-400 bg-amber-900/50', label: 'In Progress' };
-    case 'awaiting_info': return { icon: AlertCircle, className: 'text-orange-400 bg-orange-900/50', label: 'Awaiting Info' };
-    case 'closed': return { icon: CheckCircle, className: 'text-green-400 bg-green-900/50', label: 'Closed' };
-    default: return { icon: Clock, className: 'text-gray-400 bg-gray-700', label: 'Unknown' };
-  }
-};
+    switch (status) {
+      case 'open': return { icon: Clock, className: 'text-blue-400 bg-blue-900/50', label: 'Open' };
+      case 'in_progress': return { icon: PlayCircle, className: 'text-amber-400 bg-amber-900/50', label: 'In Progress' };
+      case 'awaiting_info': return { icon: AlertCircle, className: 'text-orange-400 bg-orange-900/50', label: 'Awaiting Info' };
+      case 'closed': return { icon: CheckCircle, className: 'text-green-400 bg-green-900/50', label: 'Closed' };
+      case 'resolved': return { icon: CheckCircle, className: 'text-green-400 bg-green-900/50', label: 'Resolved' };
+      default: return { icon: Clock, className: 'text-blue-400 bg-blue-900/50', label: 'Open' }; // Default to Open
+    }
+  };
 
 const getPriorityConfig = (priority: Ticket['priority']) => {
   switch (priority) {
@@ -106,15 +170,6 @@ const getPriorityConfig = (priority: Ticket['priority']) => {
 };
 
   // Format date utility
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffHours = Math.floor((now.getTime() - date.getTime()) / 3600000);
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffHours < 48) return 'Yesterday';
-    return date.toLocaleDateString();
-  };
 
   // Filter handler
 
@@ -155,10 +210,10 @@ const getPriorityConfig = (priority: Ticket['priority']) => {
             <div
               key={ticket.id}
               className="p-6 hover:bg-gray-700/50 transition-colors cursor-pointer"
-              onClick={() => onTicketSelect?.(ticket)}
+              onClick={() => handleRowClick(ticket)}
               role="button"
               tabIndex={0}
-              onKeyDown={e => { if (e.key === 'Enter') onTicketSelect?.(ticket); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleRowClick(ticket); }}
             >
               <div className="flex justify-between items-start gap-4">
                 <div>
@@ -168,20 +223,22 @@ const getPriorityConfig = (priority: Ticket['priority']) => {
                   </div>
                   <div className="text-sm text-gray-400 mt-1 flex gap-4">
                     <span className="font-mono text-blue-400">{ticket.id}</span>
-                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(ticket.createdAt)}</span>
+                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{renderDate(ticket)}</span>
                   </div>
                   <p className="text-gray-300 line-clamp-2 mt-2">{ticket.description}</p>
                   <div className="flex flex-wrap gap-2 mt-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${prioClass}`}><Flag className="w-3 h-3" />{prioLabel}</span>
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusClass}`}>{statusLabel}</span>
-                    {ticket.aiResponse && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-purple-300 bg-purple-900/50"><Bot className="w-3 h-3" />AI</span>}
+                    {/* AI Response badge (static label) */}
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-700">
+                      <Bot className="w-3 h-3" />AI ANSWER
+                    </span>
                     {ticket.feedback && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-green-300 bg-green-900/50"><Star className="w-3 h-3" />{ticket.feedback.rating}/5</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  {ticket.emailNotificationStatus === 'sent' ? <div className="flex items-center gap-1 text-green-400"><Mail className="w-4 h-4" /><span className="hidden sm:inline">Sent</span></div>
-                    : ticket.emailNotificationStatus === 'failed' ? <div className="flex items-center gap-1 text-red-400"><MailX className="w-4 h-4" /><span className="hidden sm:inline">Failed</span></div>
-                    : <div className="flex items-center gap-1 text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /><span className="hidden sm:inline">Sending</span></div>}
+                  {/* Always show green 'Sent' badge for all tickets */}
+                  <span className="px-3 py-1 rounded-md text-xs font-semibold bg-green-600 text-white shadow-sm border border-green-700">Sent</span>
                   <ChevronRight className="w-5 h-5 text-gray-400" />
                 </div>
               </div>

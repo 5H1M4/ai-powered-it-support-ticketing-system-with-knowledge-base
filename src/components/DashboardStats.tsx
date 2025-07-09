@@ -8,26 +8,15 @@
  * Accessibility: Proper semantic structure and screen reader support
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Ticket, 
   Clock, 
   CheckCircle, 
-  PlayCircle, 
-  Bot, 
-  Star, 
-  TrendingUp,
-  Users,
-  MessageSquare
-} from 'lucide-react';
+  PlayCircle} from 'lucide-react';
 import { TicketStats } from '../types';
 import { getTicketStats } from '../utils/api';
-import Spinner from './Spinner';
 
-interface DashboardStatsProps {
-  stats: TicketStats;
-  loading?: boolean;
-}
 
 export default function DashboardStats() {
   const [stats, setStats] = useState<TicketStats | null>(null);
@@ -87,38 +76,38 @@ export default function DashboardStats() {
       change: '+15%',
       changeType: 'positive' as const
     },
-    {
-      title: 'AI Responses',
-      value: stats?.aiResponses,
-      icon: Bot,
-      color: 'text-purple-400 bg-purple-900/50',
-      change: '+22%',
-      changeType: 'positive' as const
-    },
-    {
-      title: 'Avg Response Time',
-      value: stats?.avgResponseTime,
-      icon: TrendingUp,
-      color: 'text-cyan-400 bg-cyan-900/50',
-      change: '-30%',
-      changeType: 'positive' as const
-    },
-    {
-      title: 'Satisfaction Rate',
-      value: `${stats?.satisfactionRate}/5`,
-      icon: Star,
-      color: 'text-yellow-400 bg-yellow-900/50',
-      change: '+0.3',
-      changeType: 'positive' as const
-    },
-    {
-      title: 'Resolution Rate',
-      value: '94%',
-      icon: MessageSquare,
-      color: 'text-emerald-400 bg-emerald-900/50',
-      change: '+2%',
-      changeType: 'positive' as const
-    }
+    // {
+    //   title: 'AI Responses',
+    //   value: stats?.aiResponses,
+    //   icon: Bot,
+    //   color: 'text-purple-400 bg-purple-900/50',
+    //   change: '+22%',
+    //   changeType: 'positive' as const
+    // },
+    // {
+    //   title: 'Avg Response Time',
+    //   value: stats?.avgResponseTime,
+    //   icon: TrendingUp,
+    //   color: 'text-cyan-400 bg-cyan-900/50',
+    //   change: '-30%',
+    //   changeType: 'positive' as const
+    // },
+    // {
+    //   title: 'Satisfaction Rate',
+    //   value: `${stats?.satisfactionRate}/5`,
+    //   icon: Star,
+    //   color: 'text-yellow-400 bg-yellow-900/50',
+    //   change: '+0.3',
+    //   changeType: 'positive' as const
+    // },
+    // {
+    //   title: 'Resolution Rate',
+    //   value: '94%',
+    //   icon: MessageSquare,
+    //   color: 'text-emerald-400 bg-emerald-900/50',
+    //   change: '+2%',
+    //   changeType: 'positive' as const
+    // }
   ];
 
   if (loading) {
@@ -159,13 +148,7 @@ export default function DashboardStats() {
               <div className={`p-2 rounded-lg ${stat.color}`}>
                 <IconComponent className="w-4 h-4" />
               </div>
-              <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                stat.changeType === 'positive' 
-                  ? 'text-green-400 bg-green-900/50' 
-                  : 'text-red-400 bg-red-900/50'
-              }`}>
-                {stat.change}
-              </span>
+              {/* Removed percentage label */}
             </div>
             
             <div className="text-2xl font-bold text-white mb-1">
