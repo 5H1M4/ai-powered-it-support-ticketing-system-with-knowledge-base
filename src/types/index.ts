@@ -37,6 +37,7 @@ export interface CreateTicketData {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   fileUrl?: string;
   fileName?: string;
+  email?: string;
 }
 
 export interface ApiResponse<T> {

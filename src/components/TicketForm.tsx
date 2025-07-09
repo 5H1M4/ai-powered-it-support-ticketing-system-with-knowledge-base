@@ -11,7 +11,6 @@
 
 import React, { useState } from 'react';
 import { Send, Upload, CheckCircle, AlertCircle, FileText, X } from 'lucide-react';
-import { createTicket } from '../utils/api';
 import { CreateTicketData } from '../types';
 import Spinner from './Spinner';
 
@@ -19,18 +18,36 @@ interface TicketFormProps {
   onSuccess?: (ticketId: string) => void;
 }
 
+// Add the webhook helper function
+const N8N_WEBHOOK_URL = 'https://shima123.app.n8n.cloud/webhook-test/new-ticket';
+
+async function createTicket(data: CreateTicketData) {
+  const res = await fetch(N8N_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    throw new Error(`Webhook failed: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export default function TicketForm({ onSuccess }: TicketFormProps) {
   // Form state management
-  const [formData, setFormData] = useState<CreateTicketData>({
+  const [formData, setFormData] = useState<CreateTicketData & { email: string }>({
     subject: '',
     description: '',
-    priority: 'medium'
+    priority: 'medium',
+    email: ''
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [submitMessage, setSubmitMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // Add email validation state
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -39,6 +56,9 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
       ...prev,
       [name]: value
     }));
+    if (name === 'email') {
+      setEmailError(null); // Reset error on change
+    }
   };
 
   // Handle file selection
@@ -65,9 +85,17 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
     e.preventDefault();
     
     // Validate required fields
-    if (!formData.subject.trim() || !formData.description.trim()) {
+    if (!formData.subject.trim() || !formData.description.trim() || !formData.email.trim()) {
       setSubmitStatus('error');
       setSubmitMessage('Please fill in all required fields.');
+      return;
+    }
+    // Email format validation
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(formData.email)) {
+      setEmailError('Please enter a valid email address.');
+      setSubmitStatus('error');
+      setSubmitMessage('Please enter a valid email address.');
       return;
     }
 
@@ -75,8 +103,9 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
     setSubmitStatus('idle');
 
     try {
-      // API call: Create new ticket
-      const response = await createTicket(formData);
+      // API call: Create new ticket (include email)
+      const { email, ...rest } = formData;
+      const response = await createTicket({ ...rest, email });
       
       if (response.success) {
         setSubmitStatus('success');
@@ -86,7 +115,8 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
         setFormData({
           subject: '',
           description: '',
-          priority: 'medium'
+          priority: 'medium',
+          email: ''
         });
         setSelectedFile(null);
         
@@ -159,6 +189,29 @@ export default function TicketForm({ onSuccess }: TicketFormProps) {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Form field: Email input */}
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+            Email <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value={formData.email}
+            onChange={handleInputChange}
+            placeholder="your@email.com"
+            disabled={isSubmitting}
+            className={`w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-800 disabled:text-gray-500 text-white placeholder-gray-400${emailError ? ' border-red-500' : ''}`}
+            aria-describedby="email-help"
+            required
+          />
+          <p id="email-help" className="mt-1 text-sm text-gray-500">
+            We'll send ticket updates to this address
+          </p>
+          {emailError && <p className="text-sm text-red-400 mt-1">{emailError}</p>}
+        </div>
+
         {/* Form field: Subject input */}
         <div>
           <label htmlFor="subject" className="block text-sm font-medium text-gray-300 mb-2">
