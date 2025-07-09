@@ -8,7 +8,7 @@
  * Accessibility: Proper semantic structure and screen reader support
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Ticket, 
   Clock, 
@@ -21,17 +21,43 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { TicketStats } from '../types';
+import { getTicketStats } from '../utils/api';
+import Spinner from './Spinner';
 
 interface DashboardStatsProps {
   stats: TicketStats;
   loading?: boolean;
 }
 
-export default function DashboardStats({ stats, loading = false }: DashboardStatsProps) {
+export default function DashboardStats() {
+  const [stats, setStats] = useState<TicketStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setError(null);
+    getTicketStats()
+      .then(data => {
+        if (mounted) {
+          setStats(data);
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        if (mounted) {
+          setError(err.message || 'Failed to load stats');
+          setLoading(false);
+        }
+      });
+    return () => { mounted = false; };
+  }, []);
+
   const statCards = [
     {
       title: 'Total Tickets',
-      value: stats.total,
+      value: stats?.total,
       icon: Ticket,
       color: 'text-blue-400 bg-blue-900/50',
       change: '+12%',
@@ -39,7 +65,7 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
     },
     {
       title: 'Open Tickets',
-      value: stats.open,
+      value: stats?.open,
       icon: Clock,
       color: 'text-amber-400 bg-amber-900/50',
       change: '-5%',
@@ -47,7 +73,7 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
     },
     {
       title: 'In Progress',
-      value: stats.inProgress,
+      value: stats?.inProgress,
       icon: PlayCircle,
       color: 'text-orange-400 bg-orange-900/50',
       change: '+8%',
@@ -55,7 +81,7 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
     },
     {
       title: 'Resolved',
-      value: stats.closed,
+      value: stats?.closed,
       icon: CheckCircle,
       color: 'text-green-400 bg-green-900/50',
       change: '+15%',
@@ -63,7 +89,7 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
     },
     {
       title: 'AI Responses',
-      value: stats.aiResponses,
+      value: stats?.aiResponses,
       icon: Bot,
       color: 'text-purple-400 bg-purple-900/50',
       change: '+22%',
@@ -71,7 +97,7 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
     },
     {
       title: 'Avg Response Time',
-      value: stats.avgResponseTime,
+      value: stats?.avgResponseTime,
       icon: TrendingUp,
       color: 'text-cyan-400 bg-cyan-900/50',
       change: '-30%',
@@ -79,7 +105,7 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
     },
     {
       title: 'Satisfaction Rate',
-      value: `${stats.satisfactionRate}/5`,
+      value: `${stats?.satisfactionRate}/5`,
       icon: Star,
       color: 'text-yellow-400 bg-yellow-900/50',
       change: '+0.3',
@@ -108,6 +134,14 @@ export default function DashboardStats({ stats, loading = false }: DashboardStat
             <div className="w-20 h-4 bg-gray-700 rounded"></div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mb-4 p-3 bg-red-900/70 text-red-300 rounded-lg text-center font-semibold">
+        {error}
       </div>
     );
   }
