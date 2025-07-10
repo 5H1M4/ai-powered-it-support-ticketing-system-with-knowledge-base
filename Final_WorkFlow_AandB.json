@@ -1,0 +1,897 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -120,
+        -100
+      ],
+      "id": "9bff012a-f7c1-439c-a8fa-8306fc7f7fd2",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take the single Drive-files array (items[0].json.files),\n// and emit one item per file with a perfectly trimmed `id`.\nreturn items[0].json.files.map(file => ({\n  json: {\n    id: String(file.id || '')\n      .replace(/[\\r\\n\\s]+/g, '')   // remove ALL whitespace/newlines\n      // no slicing! preserve the full Drive/Doc ID length\n    ,\n    name: file.name,\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        -100
+      ],
+      "id": "5b7064c5-e444-4b74-8c8f-e4fb56136ae8",
+      "name": "Code",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "get",
+        "documentURL": "={{$json[\"id\"]}}\n"
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        540,
+        -100
+      ],
+      "id": "372cf934-7496-4a80-a6b1-e66e8c3293a7",
+      "name": "Get a document",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "baYlIQD6VElp19LM",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "={{ $json[\"content_chunk\"] }}"
+            },
+            {
+              "name": "model",
+              "value": "text-embedding-ada-002"
+            },
+            {
+              "name": "encoding_format",
+              "value": "float"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 20000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        -1440
+      ],
+      "id": "23acf592-3876-439d-a5ef-cda5d2e77be6",
+      "name": "HTTP Request1",
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "retryOnFail": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "wSAjJKijlbRhdHw8",
+          "name": "OpenAi account"
+        },
+        "httpHeaderAuth": {
+          "id": "ehoC923ENKsNN2r4",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "mimeType='application/vnd.google-apps.document' and '1cQhKYk3hTCyZL3yk2-RwXhG5yB3DXqMa' in parents"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        -100
+      ],
+      "id": "f14e70ef-5408-49ea-9961-f6c92034c637",
+      "name": "Ingest Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "rWkKqoeJwJk8OLQQ",
+          "name": "Google Drive account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split document content into ~500-word chunks, output ONE item with an array of chunks\nconst text = items[0].json.content;\nif (!text) {\n  return [{ json: { content_chunk: [] } }];\n}\n\nconst words = text.split(/\\s+/);\nconst chunks = [];\nfor (let i = 0; i < words.length; i += 500) {\n  chunks.push(words.slice(i, i + 500).join(' '));\n}\n\n// Output a single item, with all chunks in an array\nreturn [{ json: { content_chunk: chunks } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        -100
+      ],
+      "id": "e98cd64d-13af-4147-8d67-e45d1e4dff10",
+      "name": "Chunk Text",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cohere.ai/v1/embed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer M5YVHqJDT2xT7i26jL1mMaO5VoL42GSSyio8wEAv"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "texts",
+              "value": "={{$json[\"content_chunk\"]}}"
+            },
+            {
+              "name": "model",
+              "value": "embed-english-v3.0"
+            },
+            {
+              "name": "input_type",
+              "value": "search_document"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        -100
+      ],
+      "id": "cecc2ff0-d6c6-45c4-b5be-60076e130c83",
+      "name": "Embed chunks",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://bqcoztbwslhgltyqkmju.supabase.co/rest/v1/docs_vectors?on_conflict=doc_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "doc_id",
+              "value": "={{ String($json[\"doc_id\"] || \"\").replace(/[\\r\\n\\t\\s\\u00A0\\u2000-\\u200B\\u2028\\u2029\\uFEFF]+/g, \"\") }}"
+            },
+            {
+              "name": "content_chunk",
+              "value": "={{$json[\"content_chunk\"]}}\n"
+            },
+            {
+              "name": "embedding",
+              "value": "={{ JSON.stringify($json[\"embedding\"]) }}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        -100
+      ],
+      "id": "08da65d5-08b3-4ef3-a4c9-a9306f1e741b",
+      "name": "Upsert into SupaBase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "0wjGPv9IqH46yzHu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => ({\n  json: {\n    documentId: String(item.json.documentId || '').trim(),  // kill whitespace/newlines\n    content:        item.json.content,\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -100
+      ],
+      "id": "de4fcb40-bf6e-49fd-b40c-c0e8fbb391b6",
+      "name": "Clean ID string to upsert in SupaBase DB",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Run Once For All Items\n//\n// We assume\n//   items[0].json.id           is your raw Google-Doc UUID (with possible \"\\n\")\n//   items[0].json.texts       is your array of chunked text\n//   items[0].json.embeddings  is your parallel array of embedding vectors\n\nconst rawId      = String(items[0].json.id || '');\nconst cleanDocId = rawId.replace(/[\\r\\n\\s]+/g, '');  // strip ALL newlines/spaces\n\nreturn items[0].json.texts.map((chunkText, i) => ({\n  json: {\n    doc_id:       cleanDocId,\n    content_chunk: chunkText,\n    embedding:     items[0].json.embeddings[i],     // send as real array\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -100
+      ],
+      "id": "f11b4179-ca3d-4ac9-bff7-e8c4c0083811",
+      "name": "Flatten chunks and pair"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://bqcoztbwslhgltyqkmju.supabase.co/rest/v1/tickets\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apiKey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxY296dGJ3c2xoZ2x0eXFrbWp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTAzNTI4OCwiZXhwIjoyMDY2NjExMjg4fQ.kOV_AwmSfSpJvq7jJMvGLOdFhDeOhxZz1w6vH4eUgnI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxY296dGJ3c2xoZ2x0eXFrbWp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTAzNTI4OCwiZXhwIjoyMDY2NjExMjg4fQ.kOV_AwmSfSpJvq7jJMvGLOdFhDeOhxZz1w6vH4eUgnI"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n\"subject\": $json.body.subject,\n\"description\": $json.body.description,\n\"priority\": $json.body.priority,\n\"file_url\": $json.body.fileUrl || null,\n\"file_name\": $json.body.fileName || null,\n\"email\": $json.body.email\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        100,
+        260
+      ],
+      "id": "729dfc4b-561a-4ea3-8cc5-5a6392609b13",
+      "name": "Insert Ticket",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://bqcoztbwslhgltyqkmju.supabase.co/rest/v1/tickets?id=eq.{{$node[\"Insert Ticket\"].json.id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxY296dGJ3c2xoZ2x0eXFrbWp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTAzNTI4OCwiZXhwIjoyMDY2NjExMjg4fQ.kOV_AwmSfSpJvq7jJMvGLOdFhDeOhxZz1w6vH4eUgnI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxY296dGJ3c2xoZ2x0eXFrbWp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTAzNTI4OCwiZXhwIjoyMDY2NjExMjg4fQ.kOV_AwmSfSpJvq7jJMvGLOdFhDeOhxZz1w6vH4eUgnI"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"ai_response\": $json.output, \"status\": \"awaiting_feedback\", \"ai_response_generated_at\": new Date().toISOString() } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        440
+      ],
+      "id": "1b625daf-5cc2-4568-ad86-f6c412af10c1",
+      "name": "Update Ticket",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c5eef998-afdb-49a4-a6cc-583b35942df1",
+              "leftValue": "={{$json.choices === undefined}}\n",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1160,
+        260
+      ],
+      "id": "06095611-c349-408c-9699-8dabc92019f4",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "mail",
+        "fromEmail": "no-reply@yourdomain.com",
+        "fromName": "AI IT Support",
+        "toEmail": "={{$node[\"Insert Ticket\"].json.email}}\n",
+        "subject": "=AI Error on ticket #{{$node[\"Insert Ticket\"].json.id}}\n",
+        "contentValue": "=🚨 AI generation failed for ticket #{{$node[\"Insert Ticket\"].json.id}}.\n\nError payload (raw):\n{{$json | JSON.stringify(null, 2)}}\n",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.sendGrid",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        240
+      ],
+      "id": "da2cc3f9-9f95-4732-9171-7ce51cb61b46",
+      "name": "Send Email if failed",
+      "credentials": {
+        "sendGridApi": {
+          "id": "mJH5An7b48SYeMzu",
+          "name": "SendGrid account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"error\":   \"AI generation failed\"\n}\n",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1880,
+        240
+      ],
+      "id": "f1d7fa1a-0cd1-4355-90f0-b8384e95e47b",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"answer\": $(\"Update Ticket\").item.json.ai_response } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1880,
+        440
+      ],
+      "id": "72586fc9-d884-467e-b33c-b5996f70c722",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/new-ticket",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        260
+      ],
+      "id": "8eedccb0-08cd-445e-82e0-fbab42da34f4",
+      "name": "Webhook",
+      "webhookId": "99bfbc59-3136-485b-af15-4232cb076e64"
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "tableName": {
+          "__rl": true,
+          "value": "docs_vectors",
+          "mode": "list",
+          "cachedResultName": "docs_vectors"
+        },
+        "prompt": "={{ $node[\"Insert Ticket\"].json[\"description\"] }}",
+        "topK": 2,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        220,
+        620
+      ],
+      "id": "50ead54a-1f7b-41a9-b01b-821e04b5473b",
+      "name": "Supabase Vector Store",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "0wjGPv9IqH46yzHu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Use this knowledge base to answer questions from the user",
+        "tableName": {
+          "__rl": true,
+          "value": "docs_vectors",
+          "mode": "list",
+          "cachedResultName": "docs_vectors"
+        },
+        "topK": 10,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        780,
+        560
+      ],
+      "id": "b5be61fc-400f-429d-83b9-b5859f0d9124",
+      "name": "Supabase Vector Store1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "0wjGPv9IqH46yzHu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d5fcb50a-ac0f-489c-a7bb-155aa59be232",
+              "name": "texts[0]",
+              "value": "={{ $json.description }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        420,
+        260
+      ],
+      "id": "4c432643-132c-49b2-8559-51830cad6c1f",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        660,
+        560
+      ],
+      "id": "cbfabf7a-c257-4026-a583-bd94d68be84e",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "NKVGjLZKJi5rf6fX",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.texts[0] }}",
+        "options": {
+          "systemMessage": "=You are an expert IT support agent. For every incoming ticket, produce **two** distinct, clearly labeled responses:\n\nAnswer A: Core AI Response  \n- Rely **only** on your innate troubleshooting knowledge.  \n- Do **not** reference or use any retrieved documents, embeddings, or past-ticket data.  \n- Structure:  \n  1. **Diagnosis** – A concise (1–2 sentences) explanation of the probable cause.  \n  2. **Resolution Steps** – Ordered, actionable instructions.  \n  3. **Next Actions** – Clarifying questions or escalation guidance.\n\nAnswer B: RAG-Only Response  \n- Use **exclusively** the content returned by Supabase embeddings (past tickets and internal docs).  \n- Do **not** add any external knowledge, inference, or interpretation. Treat each retrieved snippet “as is.”  \n- Structure:  \n  1. **Source-Based Diagnosis** – Summarize the issue using only retrieved content.  \n  2. **Source-Based Steps** – Present instructions drawn directly from the retrieved data.  \n  3. **Citations** – List ticket IDs or document titles/URLs.  \n  4. **Next Actions** – Any clarifying questions or recommended follow-up from the retrieved content.\n\nMaintain a professional, concise tone, and conclude each answer by asking if further assistance is needed."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        660,
+        260
+      ],
+      "id": "66aca596-d130-422c-a946-1dea6ee23f3a",
+      "name": "AI Agent FeedBack For Rag And  Implementation"
+    },
+    {
+      "parameters": {
+        "modelName": "models/embedding-001"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        540,
+        940
+      ],
+      "id": "b519f234-3d17-4365-9c74-c8b25220f678",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "NKVGjLZKJi5rf6fX",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.sendgrid.com/v3/mail/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ \n  JSON.stringify({\n    personalizations: [\n      {\n        to: [\n          {\n            email: $node[\"Insert Ticket\"].json.email.replace(/^[=\\s]+/, \"\")\n          }\n        ]\n      }\n    ],\n    from: {\n      email: \"endi.shima@cit.edu.al\",\n      name:  \"AI IT Support\"\n    },\n    subject: `Your support ticket #${$node[\"Insert Ticket\"].json.id}`,\n    content: [\n      {\n        type:  \"text/plain\",\n        value: `Hello, Our AI has generated an answer for your ticket (#${$node[\"Insert Ticket\"].json.id}): ${$json.ai_response} — The AI IT Support Team`\n      }\n    ]\n  })\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1620,
+        440
+      ],
+      "id": "807cf517-4ee2-49fd-90bd-b23f01de7abb",
+      "name": "HTTP Request2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Ingest Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Get a document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a document": {
+      "main": [
+        [
+          {
+            "node": "Clean ID string to upsert in SupaBase DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Drive": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Text": {
+      "main": [
+        [
+          {
+            "node": "Embed chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed chunks": {
+      "main": [
+        [
+          {
+            "node": "Flatten chunks and pair",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean ID string to upsert in SupaBase DB": {
+      "main": [
+        [
+          {
+            "node": "Chunk Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten chunks and pair": {
+      "main": [
+        [
+          {
+            "node": "Upsert into SupaBase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Ticket": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Ticket": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send Email if failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email if failed": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Insert Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "main": [
+        []
+      ]
+    },
+    "Supabase Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent FeedBack For Rag And  Implementation",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent FeedBack For Rag And  Implementation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent FeedBack For Rag And  Implementation",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent FeedBack For Rag And  Implementation": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "288dfdee-ed3d-42f6-9225-127a44ef1ef1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2095c16c7bd72f750531e12e3ae53a08c30cff97429fcc99f3088014c0e84dc4"
+  },
+  "id": "b04Vj7IlhE9rW1ev",
+  "tags": []
+}
