@@ -1,1 +1,26 @@
+Workflow A Explanation
+In the first workflow, we kick off a Schedule Trigger every hour to automatically ingest any new Google Docs from a specific Drive folder. 
+An HTTP Request (“Ingest Drive”) queries the Drive API for all docs’ IDs and names,
+and a Code node cleans up those IDs (stripping whitespace) before passing each to the Google Docs node,
+which fetches the full document content.
+We then run a second Code node to split the content into ~500-word chunks,
+outputting an array of text segments.
+Next, an HTTP Request (“Embed chunks”) invokes Cohere’s embedding API to turn those chunks into vector representations.
+A Code node “flattens” the text/embedding pairs,
+and finally an Upsert into SupaBase node stores each chunk+vector in a Supabase table,
+using on_conflict=doc_id to merge duplicates. 
+This pipeline fulfills the “ingest and vectorize Google Docs into a vector DB” requirement by fully automating document retrieval, chunking, embedding, and storage.
 
+
+Workflow B Explanation
+The second workflow handles incoming support tickets. 
+A Webhook (/new-ticket) fires whenever a user submits a ticket. 
+The Insert Ticket HTTP node writes the raw ticket (subject, description, email, optional file info) into the Supabase tickets table.
+Immediately, a Set node prepares the ticket description as the query text,
+then a Supabase Vector Store node retrieves the top-K related document embeddings for RAG. 
+These embeddings feed into the AI Agent (using Google Gemini + langchain’s vectorStoreSupabase), 
+which produces Answer A (core AI response from general knowledge) and Answer B (RAG-only response using retrieved docs). 
+An If node checks if the LLM returned a valid response; on failure it triggers a SendGrid email alert, and on success a Update Ticket HTTP node patches the Supabase record with the AI response,
+new status (awaiting_feedback), and timestamp. Finally, an HTTP Request2 node sends the AI answer back to the user via email,
+and a Respond to Webhook node returns a JSON payload to the front end.
+This workflow covers ticket storage, RAG-powered LLM answering, status updates, and email notifications end-to-end.
